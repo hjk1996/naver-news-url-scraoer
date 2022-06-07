@@ -31,12 +31,12 @@ class NaverNewsUrlScraper:
         while True:
             url = self.URL_TEMPLATE.format(self._keyword, self._sort, self._current_page * 10 - 9)
             dom = self._get_dom_from_url(url)
-            page_data = self._extract_data_from_dom(dom)
+            page_data, is_last_page = self._extract_data_from_dom(dom)
             self._data.update(page_data)
     
-            if self._should_break:
+            if self._should_break or is_last_page:
                 break
-
+            
             self._current_page += 1
             
 
@@ -46,15 +46,20 @@ class NaverNewsUrlScraper:
         html = BeautifulSoup(res.text, "html.parser")
         return etree.HTML(str(html))
 
-    def _extract_data_from_dom(self, dom: _Element) -> set[NewsOverview]:
+    def _extract_data_from_dom(self, dom: _Element) -> tuple[set[NewsOverview], bool]:
+        is_last_page = False
         news_item_elements: list[_Element] = dom.xpath(self.NEWS_LIST_ITEM_XPATH)
+
+        if len(news_item_elements) < 10:
+            is_last_page = True
+
         filtered_news_item_elements = self._filter_news_list(news_item_elements)
 
         press_names = self._extract_press_names(filtered_news_item_elements)
         news_links = self._extract_news_links(filtered_news_item_elements)
         news_titles = self._extract_news_titles(filtered_news_item_elements)
 
-        return self._make_news_overview_objects(press_names, news_links, news_titles)
+        return self._make_news_overview_objects(press_names, news_links, news_titles), is_last_page
 
     @staticmethod
     def _make_news_overview_objects(press_names: list[str], news_links: list[str], news_titles: list[str]) -> set[NewsOverview]:
@@ -80,7 +85,13 @@ class NaverNewsUrlScraper:
     
     @property
     def _should_break(self) -> bool:
-        return len(self._data) >= self._target_amount
+        if self._current_page > 400:
+            return True
+        
+        if len(self._data) >= self._target_amount:
+            return True
+        
+        return False
 
     @staticmethod
     def _is_beyond_end_page(html: str) -> bool:
